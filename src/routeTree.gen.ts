@@ -9,9 +9,15 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as MotoristaRouteImport } from './routes/motorista'
 import { Route as GestorRouteImport } from './routes/gestor'
 import { Route as IndexRouteImport } from './routes/index'
 
+const MotoristaRoute = MotoristaRouteImport.update({
+  id: '/motorista',
+  path: '/motorista',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GestorRoute = GestorRouteImport.update({
   id: '/gestor',
   path: '/gestor',
@@ -26,31 +32,42 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/gestor': typeof GestorRoute
+  '/motorista': typeof MotoristaRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/gestor': typeof GestorRoute
+  '/motorista': typeof MotoristaRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/gestor': typeof GestorRoute
+  '/motorista': typeof MotoristaRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/gestor'
+  fullPaths: '/' | '/gestor' | '/motorista'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/gestor'
-  id: '__root__' | '/' | '/gestor'
+  to: '/' | '/gestor' | '/motorista'
+  id: '__root__' | '/' | '/gestor' | '/motorista'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   GestorRoute: typeof GestorRoute
+  MotoristaRoute: typeof MotoristaRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/motorista': {
+      id: '/motorista'
+      path: '/motorista'
+      fullPath: '/motorista'
+      preLoaderRoute: typeof MotoristaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/gestor': {
       id: '/gestor'
       path: '/gestor'
@@ -71,6 +88,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   GestorRoute: GestorRoute,
+  MotoristaRoute: MotoristaRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
