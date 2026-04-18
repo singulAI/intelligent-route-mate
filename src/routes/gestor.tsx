@@ -382,14 +382,26 @@ function GestorPage() {
             })}
           </ul>
 
-          <div className="mt-6 rounded-xl border border-border bg-surface p-3">
-            <div className="flex items-start gap-2 text-xs text-muted-foreground">
-              <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" strokeWidth={1.75} />
-              <p>
-                <span className="font-medium text-foreground">Dica:</span>{" "}
-                clique no mapa para adicionar um waypoint. Arraste os marcadores
-                para reposicioná-los.
-              </p>
+          <div className="mt-6 space-y-2">
+            <div className="rounded-xl border border-border bg-surface p-3">
+              <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" strokeWidth={1.75} />
+                <p>
+                  <span className="font-medium text-foreground">Dica:</span>{" "}
+                  clique no mapa para adicionar um waypoint. Arraste os
+                  marcadores para reposicioná-los.
+                </p>
+              </div>
+            </div>
+            <div className="rounded-xl border border-border bg-surface p-3">
+              <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                <FileJson className="mt-0.5 h-4 w-4 shrink-0 text-accent" strokeWidth={1.75} />
+                <p>
+                  <span className="font-medium text-foreground">Modelo demo:</span>{" "}
+                  o arquivo JSON exportado inclui manifesto descritivo de cada
+                  campo, ideal para apresentação e reimportação.
+                </p>
+              </div>
             </div>
           </div>
         </aside>
