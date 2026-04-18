@@ -71,7 +71,7 @@ export function seedRoute474(): Route {
   const now = Date.now();
   // Coordenadas aproximadas na região de Juiz de Fora / Linha 474
   // Ajustáveis depois pelo Gestor (clique e arraste).
-  const wps: Waypoint[] = [
+  const wps: Waypoint[] = ([
     {
       lat: -21.7642, lng: -43.3496,
       instruction: "Início do percurso na Rua das Contendas, 626. Verifique cinto e espelhos.",
@@ -144,7 +144,7 @@ export function seedRoute474(): Route {
       maneuver: "uturn", suggestedGear: "1ª→2ª", maxSpeed: 20,
       observation: "Retorno controlado, atenção total",
     },
-  ].map((w) => ({ ...w, id: uid() }));
+  ] as Omit<Waypoint, "id">[]).map((w) => ({ ...w, id: uid() }));
 
   return {
     id: uid(),
