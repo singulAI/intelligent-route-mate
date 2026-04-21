@@ -9,7 +9,8 @@ import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import {
   fetchLineByNumber, fetchWaypoints, fetchMedia, fetchNotifications,
-  fetchSchedules, type LineRow, type WaypointRow, type ManeuverType,
+  fetchSchedules, VISIBILITY_FIELDS, isVisible,
+  type LineRow, type WaypointRow, type ManeuverType, type VisibilityKey,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -162,6 +163,11 @@ function IdentityTab({ line }: { line: LineRow }) {
     delegatary: line.delegatary ?? "", validity_date: line.validity_date ?? "",
     cover_image_url: line.cover_image_url ?? "",
   });
+  const [visibility, setVisibility] = useState<Record<VisibilityKey, boolean>>(() =>
+    Object.fromEntries(
+      VISIBILITY_FIELDS.map((f) => [f.key, isVisible(line, f.key)])
+    ) as Record<VisibilityKey, boolean>
+  );
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
@@ -174,6 +180,7 @@ function IdentityTab({ line }: { line: LineRow }) {
       delegatary: form.delegatary || null,
       validity_date: form.validity_date || null,
       cover_image_url: form.cover_image_url || null,
+      ...visibility,
     }).eq("id", line.id);
     setSaving(false);
     if (error) toast.error(error.message);
@@ -183,29 +190,68 @@ function IdentityTab({ line }: { line: LineRow }) {
   const F = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((s) => ({ ...s, [k]: e.target.value }));
 
+  const toggleVis = (k: VisibilityKey) =>
+    setVisibility((s) => ({ ...s, [k]: !s[k] }));
+
   return (
-    <div className="grid gap-4 rounded-2xl border border-border bg-surface/40 p-6 md:grid-cols-2">
-      <div className="space-y-2 md:col-span-2">
-        <Label>Nome da linha</Label>
-        <Input value={form.name} onChange={F("name")} />
+    <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+      <div className="grid gap-4 rounded-2xl border border-border bg-surface/40 p-6 md:grid-cols-2">
+        <div className="space-y-2 md:col-span-2">
+          <Label>Nome da linha</Label>
+          <Input value={form.name} onChange={F("name")} />
+        </div>
+        <div className="space-y-2 md:col-span-2">
+          <Label>Descrição</Label>
+          <Textarea rows={3} value={form.description} onChange={F("description")} />
+        </div>
+        <div className="space-y-2"><Label>Tarifa (R$)</Label><Input type="number" step="0.01" value={form.fare} onChange={F("fare")} /></div>
+        <div className="space-y-2"><Label>Vigência</Label><Input type="date" value={form.validity_date} onChange={F("validity_date")} /></div>
+        <div className="space-y-2"><Label>Consórcio</Label><Input value={form.consortium} onChange={F("consortium")} /></div>
+        <div className="space-y-2"><Label>Célula operacional / Delegatária</Label><Input value={form.delegatary} onChange={F("delegatary")} /></div>
+        <div className="space-y-2 md:col-span-2">
+          <Label>URL da imagem de capa</Label>
+          <Input value={form.cover_image_url} onChange={F("cover_image_url")} placeholder="https://…" />
+        </div>
+        <div className="flex flex-wrap items-center gap-3 md:col-span-2">
+          <Button onClick={save} disabled={saving}>
+            <Save className="mr-1.5 h-4 w-4" /> {saving ? "Salvando…" : "Salvar identidade"}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Os campos visíveis ao motorista são definidos no painel ao lado.
+          </p>
+        </div>
       </div>
-      <div className="space-y-2 md:col-span-2">
-        <Label>Descrição</Label>
-        <Textarea rows={3} value={form.description} onChange={F("description")} />
-      </div>
-      <div className="space-y-2"><Label>Tarifa (R$)</Label><Input type="number" step="0.01" value={form.fare} onChange={F("fare")} /></div>
-      <div className="space-y-2"><Label>Vigência</Label><Input type="date" value={form.validity_date} onChange={F("validity_date")} /></div>
-      <div className="space-y-2"><Label>Consórcio</Label><Input value={form.consortium} onChange={F("consortium")} /></div>
-      <div className="space-y-2"><Label>Delegatária</Label><Input value={form.delegatary} onChange={F("delegatary")} /></div>
-      <div className="space-y-2 md:col-span-2">
-        <Label>URL da imagem de capa</Label>
-        <Input value={form.cover_image_url} onChange={F("cover_image_url")} placeholder="https://…" />
-      </div>
-      <div className="md:col-span-2">
-        <Button onClick={save} disabled={saving}>
-          <Save className="mr-1.5 h-4 w-4" /> {saving ? "Salvando…" : "Salvar identidade"}
-        </Button>
-      </div>
+
+      <aside className="rounded-2xl border border-border bg-surface/40 p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <Eye className="h-4 w-4 text-primary" strokeWidth={1.5} />
+          <h3 className="text-sm font-semibold">Visibilidade pública</h3>
+        </div>
+        <p className="mb-4 text-xs text-muted-foreground">
+          Marque quais campos serão exibidos ao motorista no card expandido. Lembre de salvar.
+        </p>
+        <ul className="space-y-1.5">
+          {VISIBILITY_FIELDS.map((f) => {
+            const on = visibility[f.key];
+            return (
+              <li key={f.key}>
+                <button
+                  type="button"
+                  onClick={() => toggleVis(f.key)}
+                  className="flex w-full items-center justify-between rounded-lg border border-border/60 bg-background px-3 py-2 text-left text-sm transition-colors hover:border-primary/40"
+                >
+                  <span>{f.label}</span>
+                  {on ? (
+                    <Eye className="h-4 w-4 text-primary" strokeWidth={1.5} />
+                  ) : (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </aside>
     </div>
   );
 }
