@@ -14,16 +14,254 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      lines: {
+        Row: {
+          consortium: string | null
+          cover_image_url: string | null
+          created_at: string
+          delegatary: string | null
+          description: string | null
+          fare: number | null
+          id: string
+          name: string
+          number: number
+          published: boolean
+          updated_at: string
+          validity_date: string | null
+        }
+        Insert: {
+          consortium?: string | null
+          cover_image_url?: string | null
+          created_at?: string
+          delegatary?: string | null
+          description?: string | null
+          fare?: number | null
+          id?: string
+          name?: string
+          number: number
+          published?: boolean
+          updated_at?: string
+          validity_date?: string | null
+        }
+        Update: {
+          consortium?: string | null
+          cover_image_url?: string | null
+          created_at?: string
+          delegatary?: string | null
+          description?: string | null
+          fare?: number | null
+          id?: string
+          name?: string
+          number?: number
+          published?: boolean
+          updated_at?: string
+          validity_date?: string | null
+        }
+        Relationships: []
+      }
+      media: {
+        Row: {
+          caption: string | null
+          created_at: string
+          id: string
+          line_id: string
+          position: number
+          type: string
+          url: string
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string
+          id?: string
+          line_id: string
+          position?: number
+          type: string
+          url: string
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string
+          id?: string
+          line_id?: string
+          position?: number
+          type?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "media_line_id_fkey"
+            columns: ["line_id"]
+            isOneToOne: false
+            referencedRelation: "lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          active: boolean
+          created_at: string
+          ends_at: string | null
+          id: string
+          line_id: string | null
+          message: string
+          priority: string
+          starts_at: string | null
+          title: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          ends_at?: string | null
+          id?: string
+          line_id?: string | null
+          message: string
+          priority?: string
+          starts_at?: string | null
+          title: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          ends_at?: string | null
+          id?: string
+          line_id?: string | null
+          message?: string
+          priority?: string
+          starts_at?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_line_id_fkey"
+            columns: ["line_id"]
+            isOneToOne: false
+            referencedRelation: "lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      schedules: {
+        Row: {
+          created_at: string
+          day_type: string
+          departures: Json
+          fleet_per_hour: Json
+          id: string
+          line_id: string
+        }
+        Insert: {
+          created_at?: string
+          day_type: string
+          departures?: Json
+          fleet_per_hour?: Json
+          id?: string
+          line_id: string
+        }
+        Update: {
+          created_at?: string
+          day_type?: string
+          departures?: Json
+          fleet_per_hour?: Json
+          id?: string
+          line_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedules_line_id_fkey"
+            columns: ["line_id"]
+            isOneToOne: false
+            referencedRelation: "lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      waypoints: {
+        Row: {
+          created_at: string
+          id: string
+          instruction: string
+          lat: number
+          line_id: string
+          lng: number
+          maneuver_type: string
+          max_speed: number | null
+          observation: string | null
+          position: number
+          suggested_gear: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          instruction?: string
+          lat: number
+          line_id: string
+          lng: number
+          maneuver_type?: string
+          max_speed?: number | null
+          observation?: string | null
+          position: number
+          suggested_gear?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          instruction?: string
+          lat?: number
+          line_id?: string
+          lng?: number
+          maneuver_type?: string
+          max_speed?: number | null
+          observation?: string | null
+          position?: number
+          suggested_gear?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "waypoints_line_id_fkey"
+            columns: ["line_id"]
+            isOneToOne: false
+            referencedRelation: "lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +388,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin"],
+    },
   },
 } as const
