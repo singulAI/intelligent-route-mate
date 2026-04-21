@@ -1,10 +1,12 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Save, Trash2, Plus, Upload, Volume2, Eye, EyeOff,
   Image as ImageIcon, Bell, Clock, MapPin, Settings2, X, Loader2,
+  FileUp, AlertTriangle, CheckCircle2,
 } from "lucide-react";
+import Papa from "papaparse";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -256,6 +258,185 @@ function IdentityTab({ line }: { line: LineRow }) {
   );
 }
 
+// ─── Import waypoints types ───
+interface ImportedWaypoint {
+  position: number;
+  lat: number;
+  lng: number;
+  instruction: string;
+  maneuver_type: ManeuverType;
+  suggested_gear: string | null;
+  max_speed: number | null;
+  observation: string | null;
+}
+
+const VALID_MANEUVERS = new Set<string>(["start","right","left","straight","highway","exit","terminal","uturn","merge","end"]);
+
+function parseImportFile(file: File): Promise<{ rows: ImportedWaypoint[]; errors: string[] }> {
+  return new Promise((resolve) => {
+    const errors: string[] = [];
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = (e.target?.result as string) ?? "";
+      let raw: Record<string, unknown>[] = [];
+
+      if (file.name.endsWith(".json")) {
+        try { raw = JSON.parse(text); }
+        catch { resolve({ rows: [], errors: ["JSON inválido."] }); return; }
+        if (!Array.isArray(raw)) { resolve({ rows: [], errors: ["O JSON deve ser um array."] }); return; }
+      } else {
+        const result = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true });
+        raw = result.data as Record<string, unknown>[];
+      }
+
+      const rows: ImportedWaypoint[] = raw.map((r, i) => {
+        const lat = Number(r.lat ?? r.latitude);
+        const lng = Number(r.lng ?? r.longitude ?? r.lon);
+        const pos = Number(r.position ?? r.pos ?? (i + 1));
+        const maneuver = String(r.maneuver_type ?? r.maneuver ?? "straight").toLowerCase();
+
+        if (!isFinite(lat) || !isFinite(lng)) errors.push(`Linha ${i + 1}: lat/lng inválido.`);
+        if (!VALID_MANEUVERS.has(maneuver)) errors.push(`Linha ${i + 1}: manobra "${maneuver}" inválida.`);
+
+        return {
+          position: isFinite(pos) ? pos : i + 1,
+          lat,
+          lng,
+          instruction: String(r.instruction ?? r.instrucao ?? r.instrução ?? ""),
+          maneuver_type: (VALID_MANEUVERS.has(maneuver) ? maneuver : "straight") as ManeuverType,
+          suggested_gear: r.suggested_gear != null ? String(r.suggested_gear) : null,
+          max_speed: r.max_speed != null && r.max_speed !== "" ? Number(r.max_speed) : null,
+          observation: r.observation != null ? String(r.observation) : null,
+        };
+      });
+
+      resolve({ rows, errors });
+    };
+    reader.readAsText(file, "utf-8");
+  });
+}
+
+// ─── ImportWaypointsButton ───
+function ImportWaypointsButton({ lineId, onImported }: { lineId: string; onImported: () => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [step, setStep] = useState<"idle" | "preview" | "saving">("idle");
+  const [preview, setPreview] = useState<ImportedWaypoint[]>([]);
+  const [errors, setErrors] = useState<string[]>([]);
+
+  const handleFile = async (file: File) => {
+    const { rows, errors } = await parseImportFile(file);
+    setPreview(rows);
+    setErrors(errors);
+    setStep("preview");
+  };
+
+  const confirmImport = async () => {
+    setStep("saving");
+    // delete all existing waypoints for this line
+    const { error: delErr } = await supabase.from("waypoints").delete().eq("line_id", lineId);
+    if (delErr) { toast.error(delErr.message); setStep("preview"); return; }
+
+    // insert new waypoints in order
+    const rows = preview
+      .sort((a, b) => a.position - b.position)
+      .map((r, i) => ({ ...r, position: i + 1, line_id: lineId }));
+
+    const { error: insErr } = await supabase.from("waypoints").insert(rows);
+    if (insErr) { toast.error(insErr.message); setStep("preview"); return; }
+
+    toast.success(`${rows.length} orientações importadas com sucesso.`);
+    setStep("idle");
+    setPreview([]);
+    setErrors([]);
+    onImported();
+  };
+
+  const cancel = () => { setStep("idle"); setPreview([]); setErrors([]); if (inputRef.current) inputRef.current.value = ""; };
+
+  if (step === "preview" || step === "saving") {
+    return (
+      <div className="rounded-xl border border-border bg-surface/40 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <FileUp className="h-4 w-4 text-primary" />
+            Preview da importação — {preview.length} pontos
+          </h3>
+          <Button size="sm" variant="ghost" onClick={cancel} disabled={step === "saving"}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {errors.length > 0 && (
+          <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-3 space-y-1">
+            <p className="text-xs font-semibold text-destructive flex items-center gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5" /> {errors.length} aviso(s) — verifique antes de continuar
+            </p>
+            {errors.slice(0, 5).map((e, i) => <p key={i} className="text-xs text-destructive/80">{e}</p>)}
+          </div>
+        )}
+
+        <div className="max-h-48 overflow-y-auto rounded-lg border border-border">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-muted/80">
+              <tr>
+                <th className="p-2 text-left font-mono">#</th>
+                <th className="p-2 text-left">Instrução</th>
+                <th className="p-2 text-left">Manobra</th>
+                <th className="p-2 text-left">Vel.</th>
+                <th className="p-2 text-left">Marcha</th>
+              </tr>
+            </thead>
+            <tbody>
+              {preview.map((r, i) => (
+                <tr key={i} className="border-t border-border/50">
+                  <td className="p-2 font-mono text-primary">{r.position}</td>
+                  <td className="p-2 max-w-[180px] truncate">{r.instruction || <span className="text-muted-foreground italic">—</span>}</td>
+                  <td className="p-2">{r.maneuver_type}</td>
+                  <td className="p-2">{r.max_speed ?? "—"}</td>
+                  <td className="p-2">{r.suggested_gear ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            onClick={confirmImport}
+            disabled={step === "saving" || preview.length === 0}
+          >
+            {step === "saving"
+              ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Importando…</>
+              : <><CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />Confirmar e substituir</>}
+          </Button>
+          <p className="text-xs text-muted-foreground">Isso substitui todos os pontos atuais da rota.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".csv,.json"
+        className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+      />
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => inputRef.current?.click()}
+      >
+        <FileUp className="mr-1.5 h-3.5 w-3.5" />
+        Importar orientações
+      </Button>
+    </>
+  );
+}
+
 // ─── Route (waypoints + map) ───
 function RouteTab({ lineId, waypoints }: { lineId: string; waypoints: WaypointRow[] }) {
   const qc = useQueryClient();
@@ -308,8 +489,9 @@ function RouteTab({ lineId, waypoints }: { lineId: string; waypoints: WaypointRo
         </Suspense>
       </div>
       <div className="space-y-3">
-        <div className="rounded-xl border border-border bg-surface/40 p-3">
+        <div className="rounded-xl border border-border bg-surface/40 p-3 space-y-2">
           <p className="text-xs text-muted-foreground">Clique no mapa para adicionar pontos. Arraste marcadores para reposicionar.</p>
+          <ImportWaypointsButton lineId={lineId} onImported={refresh} />
         </div>
         {sel ? (
           <div className="space-y-3 rounded-xl border border-border bg-surface/40 p-4">
