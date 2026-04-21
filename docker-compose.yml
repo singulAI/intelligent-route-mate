@@ -6,7 +6,7 @@ services:
     container_name: ra-routes
     restart: unless-stopped
     ports:
-      - "${HOST_PORT:-3100}:3000"
+      - "127.0.0.1:${HOST_PORT:-3100}:3000"
     env_file:
       - .env
     environment:
