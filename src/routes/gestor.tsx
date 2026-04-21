@@ -3,13 +3,14 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
-  LogOut, ShieldAlert, Eye, EyeOff, Pencil, Upload, Download,
+  LogOut, ShieldAlert, Eye, EyeOff, Pencil, Download,
   FileJson, FileSpreadsheet, ChevronRight, RefreshCw,
+  MessageSquare, Check, Trash2, Inbox,
 } from "lucide-react";
 import Papa from "papaparse";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
-import type { LineRow } from "@/lib/api";
+import { fetchObservations, type LineRow, type ObservationRow } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -258,8 +259,104 @@ function GestorIndex() {
             </motion.div>
           ))}
         </div>
+
+        <ObservationsInbox lines={lines} />
       </main>
     </div>
+  );
+}
+
+// ─── Observations inbox ───
+function ObservationsInbox({ lines }: { lines: LineWithCount[] }) {
+  const qc = useQueryClient();
+  const obsQ = useQuery({
+    queryKey: ["admin-observations"],
+    queryFn: fetchObservations,
+  });
+  const [filter, setFilter] = useState<"all" | "unread">("unread");
+
+  const lineMap = new Map(lines.map((l) => [l.id, l]));
+  const all = obsQ.data ?? [];
+  const list = filter === "unread" ? all.filter((o) => !o.read) : all;
+  const unreadCount = all.filter((o) => !o.read).length;
+
+  const markRead = async (o: ObservationRow) => {
+    const { error } = await supabase.from("observations").update({ read: !o.read }).eq("id", o.id);
+    if (error) toast.error(error.message);
+    else qc.invalidateQueries({ queryKey: ["admin-observations"] });
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm("Excluir esta observação?")) return;
+    const { error } = await supabase.from("observations").delete().eq("id", id);
+    if (error) toast.error(error.message);
+    else qc.invalidateQueries({ queryKey: ["admin-observations"] });
+  };
+
+  return (
+    <section className="mt-10">
+      <div className="mb-3 flex items-center gap-3">
+        <Inbox className="h-4 w-4 text-primary" strokeWidth={1.5} />
+        <h2 className="text-sm font-semibold">Observações dos motoristas</h2>
+        {unreadCount > 0 && (
+          <span className="rounded-full bg-primary px-2 py-0.5 font-mono text-[10px] font-bold text-primary-foreground">
+            {unreadCount}
+          </span>
+        )}
+        <div className="ml-auto flex items-center gap-1 rounded-full border border-border bg-surface p-0.5 text-xs">
+          <button
+            onClick={() => setFilter("unread")}
+            className={`rounded-full px-3 py-1 transition-colors ${filter === "unread" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            Não lidas
+          </button>
+          <button
+            onClick={() => setFilter("all")}
+            className={`rounded-full px-3 py-1 transition-colors ${filter === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            Todas
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {list.length === 0 && (
+          <div className="rounded-xl border border-dashed border-border bg-surface/30 p-6 text-center text-xs text-muted-foreground">
+            <MessageSquare className="mx-auto mb-2 h-5 w-5 opacity-40" strokeWidth={1.5} />
+            {filter === "unread" ? "Nenhuma observação não lida." : "Nenhuma observação recebida ainda."}
+          </div>
+        )}
+        {list.map((o) => {
+          const line = o.line_id ? lineMap.get(o.line_id) : null;
+          return (
+            <div
+              key={o.id}
+              className={`flex items-start gap-3 rounded-xl border p-3 transition-colors ${
+                o.read ? "border-border bg-surface/30" : "border-primary/30 bg-primary/5"
+              }`}
+            >
+              {line && (
+                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/15 font-mono text-xs font-bold text-primary">
+                  {String(line.number).padStart(3, "0")}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm">{o.message}</p>
+                <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  {line ? line.name : "Sem linha"} · {new Date(o.created_at).toLocaleString("pt-BR")}
+                </p>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => markRead(o)} title={o.read ? "Marcar como não lida" : "Marcar como lida"}>
+                <Check className={`h-4 w-4 ${o.read ? "text-success" : "text-muted-foreground"}`} strokeWidth={1.5} />
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => remove(o.id)}>
+                <Trash2 className="h-4 w-4 text-muted-foreground" strokeWidth={1.5} />
+              </Button>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

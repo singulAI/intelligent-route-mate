@@ -26,6 +26,17 @@ export type Database = {
           name: string
           number: number
           published: boolean
+          show_availability: boolean
+          show_consortium: boolean
+          show_delegatary: boolean
+          show_fare: boolean
+          show_map: boolean
+          show_media: boolean
+          show_name: boolean
+          show_number: boolean
+          show_schedules: boolean
+          show_validity: boolean
+          show_waypoints: boolean
           updated_at: string
           validity_date: string | null
         }
@@ -40,6 +51,17 @@ export type Database = {
           name?: string
           number: number
           published?: boolean
+          show_availability?: boolean
+          show_consortium?: boolean
+          show_delegatary?: boolean
+          show_fare?: boolean
+          show_map?: boolean
+          show_media?: boolean
+          show_name?: boolean
+          show_number?: boolean
+          show_schedules?: boolean
+          show_validity?: boolean
+          show_waypoints?: boolean
           updated_at?: string
           validity_date?: string | null
         }
@@ -54,6 +76,17 @@ export type Database = {
           name?: string
           number?: number
           published?: boolean
+          show_availability?: boolean
+          show_consortium?: boolean
+          show_delegatary?: boolean
+          show_fare?: boolean
+          show_map?: boolean
+          show_media?: boolean
+          show_name?: boolean
+          show_number?: boolean
+          show_schedules?: boolean
+          show_validity?: boolean
+          show_waypoints?: boolean
           updated_at?: string
           validity_date?: string | null
         }
@@ -134,6 +167,38 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "notifications_line_id_fkey"
+            columns: ["line_id"]
+            isOneToOne: false
+            referencedRelation: "lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      observations: {
+        Row: {
+          created_at: string
+          id: string
+          line_id: string | null
+          message: string
+          read: boolean
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          line_id?: string | null
+          message: string
+          read?: boolean
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          line_id?: string | null
+          message?: string
+          read?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "observations_line_id_fkey"
             columns: ["line_id"]
             isOneToOne: false
             referencedRelation: "lines"

@@ -26,6 +26,48 @@ export interface LineRow {
   published: boolean;
   created_at: string;
   updated_at: string;
+  // Visibility flags (default true on the server)
+  show_name?: boolean;
+  show_number?: boolean;
+  show_fare?: boolean;
+  show_availability?: boolean;
+  show_consortium?: boolean;
+  show_delegatary?: boolean;
+  show_validity?: boolean;
+  show_map?: boolean;
+  show_waypoints?: boolean;
+  show_schedules?: boolean;
+  show_media?: boolean;
+}
+
+export interface ObservationRow {
+  id: string;
+  line_id: string | null;
+  message: string;
+  read: boolean;
+  created_at: string;
+}
+
+export const VISIBILITY_FIELDS = [
+  { key: "show_name", label: "Nome" },
+  { key: "show_number", label: "Linha (número)" },
+  { key: "show_fare", label: "Valor" },
+  { key: "show_availability", label: "Disponibilidade" },
+  { key: "show_consortium", label: "Consórcio" },
+  { key: "show_delegatary", label: "Célula operacional" },
+  { key: "show_validity", label: "Vigência" },
+  { key: "show_map", label: "Mapa" },
+  { key: "show_waypoints", label: "Orientações" },
+  { key: "show_schedules", label: "Horários" },
+  { key: "show_media", label: "Mídia" },
+] as const;
+
+export type VisibilityKey = typeof VISIBILITY_FIELDS[number]["key"];
+
+// Default to true if undefined (back-compat)
+export function isVisible(line: LineRow, key: VisibilityKey): boolean {
+  const v = (line as unknown as Record<string, unknown>)[key];
+  return v === undefined || v === null ? true : Boolean(v);
 }
 
 export interface WaypointRow {
@@ -144,6 +186,27 @@ export function maneuverLabel(m: ManeuverType): string {
     end: "Fim",
   };
   return map[m];
+}
+
+// ─── Observations (public submit, admin read) ───
+export async function submitObservation(lineId: string, message: string) {
+  const trimmed = message.trim().slice(0, 500);
+  if (!trimmed) throw new Error("Mensagem vazia");
+  const { error } = await supabase.from("observations").insert({
+    line_id: lineId,
+    message: trimmed,
+  });
+  if (error) throw error;
+}
+
+export async function fetchObservations(): Promise<ObservationRow[]> {
+  const { data, error } = await supabase
+    .from("observations")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) throw error;
+  return (data ?? []) as ObservationRow[];
 }
 
 // ─── Admin checks ───
