@@ -2,18 +2,24 @@ import { useMemo } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Bus, MapPin, Sparkles, Clock, Bell } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import type { LineRow, WaypointRow } from "@/lib/api";
+import type { LineRow } from "@/lib/api";
 import MiniRouteMap from "@/components/MiniRouteMap";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "RA Routes — Portal das Linhas Urbanas" },
-      { name: "description", content: "Conheça as 36 linhas de transporte público urbano: mapas, horários, orientações e notificações em tempo real." },
-      { property: "og:title", content: "RA Routes — Portal das Linhas Urbanas" },
-      { property: "og:description", content: "Mapas, horários e orientações das linhas de ônibus urbano." },
+      { title: "Condução Inteligente" },
+      {
+        name: "description",
+        content:
+          "Portal das linhas urbanas — mapas, rotas e orientações para uma condução mais inteligente.",
+      },
+      { property: "og:title", content: "Condução Inteligente" },
+      {
+        property: "og:description",
+        content: "Portal das linhas urbanas — condução mais inteligente.",
+      },
     ],
   }),
   ssr: false,
@@ -25,14 +31,15 @@ interface LineWithWaypoints extends LineRow {
 }
 
 async function fetchLinesWithRoutes(): Promise<LineWithWaypoints[]> {
-  // Get all lines (public RLS returns only published)
   const { data: lines, error } = await supabase
     .from("lines")
     .select("*, waypoints(lat,lng,position)")
     .order("number", { ascending: true });
   if (error) throw error;
 
-  type Row = LineRow & { waypoints: { lat: number; lng: number; position: number }[] };
+  type Row = LineRow & {
+    waypoints: { lat: number; lng: number; position: number }[];
+  };
   return (lines as Row[] | null ?? []).map((l) => ({
     ...l,
     waypoints: [...(l.waypoints ?? [])]
@@ -42,12 +49,12 @@ async function fetchLinesWithRoutes(): Promise<LineWithWaypoints[]> {
 }
 
 function PublicHome() {
-  const { data: publishedLines = [], isLoading } = useQuery({
+  const { data: publishedLines = [] } = useQuery({
     queryKey: ["public-lines"],
     queryFn: fetchLinesWithRoutes,
   });
 
-  // Build a 36-card grid: fill with published, then placeholders to reach 36
+  // Fill grid up to 36 — real lines first (in insertion order), then placeholders
   const slots = useMemo(() => {
     const arr: (LineWithWaypoints | null)[] = [...publishedLines];
     while (arr.length < 36) arr.push(null);
@@ -56,83 +63,43 @@ function PublicHome() {
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      {/* ambient blobs */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-primary/15 blur-3xl" />
-        <div className="absolute bottom-0 right-0 h-96 w-96 rounded-full bg-accent/10 blur-3xl" />
+      {/* Soft ambient light — no harsh gradients */}
+      <div className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute -top-40 left-1/2 h-[480px] w-[760px] -translate-x-1/2 rounded-full bg-[oklch(0.55_0.16_255_/_0.06)] blur-3xl" />
       </div>
 
-      <main className="relative mx-auto max-w-7xl px-6 py-16">
+      <main className="relative mx-auto max-w-[1280px] px-5 pb-24 pt-16 sm:px-8 md:pt-24">
         {/* Hero */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="mb-14 text-center"
+          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          className="mb-14 text-center md:mb-20"
         >
-          <div className="mx-auto mb-6 inline-flex items-center gap-3 rounded-full border border-border bg-surface/60 px-4 py-1.5 backdrop-blur">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
-            </span>
-            <span className="font-mono text-xs uppercase tracking-[0.25em] text-muted-foreground">
-              Portal Público · {publishedLines.length} de 36 linhas ativas
-            </span>
-          </div>
-
-          <h1 className="text-4xl font-bold tracking-tight md:text-6xl">
-            Linhas urbanas{" "}
-            <span className="bg-gradient-to-br from-primary via-primary to-accent bg-clip-text text-transparent">
-              em tempo real
-            </span>
+          <h1 className="font-display text-4xl font-semibold leading-[1.05] tracking-tight text-foreground sm:text-5xl md:text-6xl lg:text-7xl">
+            Condução Inteligente
           </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-base text-muted-foreground md:text-lg">
-            Explore mapas interativos, horários, orientações de condução e notificações de cada linha.
-          </p>
-
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-xs text-muted-foreground">
-            {[
-              { Icon: MapPin, label: "Mapa interativo" },
-              { Icon: Clock, label: "Quadro de horários" },
-              { Icon: Bell, label: "Notificações" },
-              { Icon: Sparkles, label: "Orientações em voz" },
-            ].map(({ Icon, label }) => (
-              <div key={label} className="flex items-center gap-2">
-                <Icon className="h-4 w-4" strokeWidth={1.5} />
-                <span className="font-mono uppercase tracking-[0.18em]">{label}</span>
-              </div>
-            ))}
-          </div>
         </motion.div>
 
-        {/* Grid of 36 cards */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+        {/* Grid: 1 / 2 / 3 / 4 cards per row */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 lg:gap-6 xl:grid-cols-4">
           {slots.map((line, idx) => (
             <motion.div
               key={line?.id ?? `slot-${idx}`}
-              initial={{ opacity: 0, y: 12 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: Math.min(idx * 0.015, 0.4) }}
+              transition={{
+                duration: 0.4,
+                delay: Math.min(idx * 0.025, 0.6),
+                ease: [0.22, 1, 0.36, 1],
+              }}
             >
-              {line ? (
-                <LineCard line={line} />
-              ) : (
-                <PlaceholderCard index={idx + 1} />
-              )}
+              {line ? <LineCard line={line} /> : <PlaceholderCard />}
             </motion.div>
           ))}
         </div>
 
-        {isLoading && (
-          <p className="mt-8 text-center font-mono text-xs uppercase tracking-widest text-muted-foreground">
-            Carregando…
-          </p>
-        )}
-
-        <footer className="mt-20 flex items-center justify-center gap-2 border-t border-border pt-6 text-[10px] font-mono uppercase tracking-[0.25em] text-muted-foreground/60">
-          <Bus className="h-3 w-3" />
-          <span>RA Routes · Portal Público</span>
-        </footer>
+        <Footer />
       </main>
     </div>
   );
@@ -143,53 +110,72 @@ function LineCard({ line }: { line: LineWithWaypoints }) {
     <Link
       to="/linha/$numero"
       params={{ numero: String(line.number) }}
-      className="group block overflow-hidden rounded-2xl border border-border bg-surface transition-all hover:border-primary/50 hover:shadow-[var(--shadow-elevated)]"
+      className="group block overflow-hidden rounded-2xl border border-border bg-surface shadow-soft transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-card"
     >
-      <div className="relative h-28 overflow-hidden">
+      <div className="relative aspect-[5/3] overflow-hidden bg-secondary/40">
         <MiniRouteMap points={line.waypoints} className="h-full w-full" />
-        <div className="absolute left-2 top-2 rounded-md bg-background/80 px-2 py-0.5 font-mono text-[11px] font-bold text-primary backdrop-blur">
-          {String(line.number).padStart(3, "0")}
-        </div>
         {line.cover_image_url && (
           <img
             src={line.cover_image_url}
             alt=""
-            className="absolute inset-0 h-full w-full object-cover opacity-30 mix-blend-luminosity transition-opacity group-hover:opacity-50"
+            className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-30"
+            loading="lazy"
           />
         )}
       </div>
-      <div className="p-3">
-        <h3 className="line-clamp-2 text-sm font-semibold leading-tight">
+      <div className="flex items-baseline gap-2 px-4 py-3.5">
+        <span className="font-mono text-[11px] font-semibold tracking-wider text-primary">
+          {String(line.number).padStart(3, "0")}
+        </span>
+        <h3 className="line-clamp-1 text-[13px] font-medium leading-tight text-foreground">
           {line.name}
         </h3>
-        <div className="mt-2 flex items-center justify-between text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-          <span>{line.waypoints.length} pontos</span>
-          {line.fare && <span>R$ {Number(line.fare).toFixed(2)}</span>}
-        </div>
       </div>
     </Link>
   );
 }
 
-function PlaceholderCard({ index }: { index: number }) {
+function PlaceholderCard() {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-dashed border-border/60 bg-surface/30 p-3">
-      <div className="grid h-28 place-items-center rounded-lg bg-gradient-to-br from-surface to-surface-2/40">
-        <div className="text-center">
-          <div className="mx-auto grid h-8 w-8 place-items-center rounded-full bg-muted/50">
-            <Bus className="h-4 w-4 text-muted-foreground/60" strokeWidth={1.5} />
-          </div>
-          <p className="mt-2 font-mono text-[9px] uppercase tracking-[0.2em] text-muted-foreground/60">
-            Slot {String(index).padStart(2, "0")}
-          </p>
-        </div>
+    <div className="overflow-hidden rounded-2xl border border-dashed border-border/80 bg-surface/40">
+      <div className="grid aspect-[5/3] place-items-center">
+        <svg
+          viewBox="0 0 32 32"
+          className="h-8 w-8 text-muted-foreground/30"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.25"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M5 22 C 10 8, 22 24, 27 10" />
+          <circle cx="5" cy="22" r="1.5" fill="currentColor" />
+          <circle cx="27" cy="10" r="1.5" fill="currentColor" />
+        </svg>
       </div>
-      <div className="mt-3">
-        <h3 className="text-sm font-semibold text-muted-foreground">Em breve</h3>
-        <p className="mt-1 text-[10px] text-muted-foreground/70">
-          Nova rota será carregada em breve.
-        </p>
+      <div className="px-4 py-3.5">
+        <p className="text-[13px] font-medium text-muted-foreground/80">Em breve</p>
       </div>
     </div>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="mt-20 flex flex-col items-center gap-1.5 text-[10px] text-muted-foreground/60 sm:flex-row sm:justify-center sm:gap-3">
+      <a
+        href="https://rodrigo.run"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-mono uppercase tracking-[0.2em] transition-colors hover:text-foreground"
+      >
+        DEV — rodrigo.run
+      </a>
+      <span className="hidden h-3 w-px bg-border sm:block" aria-hidden />
+      <span className="font-mono uppercase tracking-[0.2em]">
+        © 2026 Guilherme H. Oliveira
+      </span>
+    </footer>
   );
 }
