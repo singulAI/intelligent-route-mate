@@ -272,6 +272,20 @@ interface ImportedWaypoint {
 
 const VALID_MANEUVERS = new Set<string>(["start","right","left","straight","highway","exit","terminal","uturn","merge","end"]);
 
+/** Normalize a record's keys to lowercase and pick value case-insensitively */
+function pick(r: Record<string, unknown>, ...keys: string[]): unknown {
+  const lower = Object.fromEntries(Object.entries(r).map(([k, v]) => [k.toLowerCase().trim(), v]));
+  for (const k of keys) { const v = lower[k.toLowerCase()]; if (v !== undefined && v !== "") return v; }
+  return undefined;
+}
+
+/** Parse a coordinate string that may use comma as decimal separator */
+function parseCoord(v: unknown): number {
+  if (v == null || v === "") return NaN;
+  const s = String(v).trim().replace(",", ".");
+  return Number(s);
+}
+
 function parseImportFile(file: File): Promise<{ rows: ImportedWaypoint[]; errors: string[] }> {
   return new Promise((resolve) => {
     const errors: string[] = [];
@@ -290,23 +304,29 @@ function parseImportFile(file: File): Promise<{ rows: ImportedWaypoint[]; errors
       }
 
       const rows: ImportedWaypoint[] = raw.map((r, i) => {
-        const lat = Number(r.lat ?? r.latitude);
-        const lng = Number(r.lng ?? r.longitude ?? r.lon);
-        const pos = Number(r.position ?? r.pos ?? (i + 1));
-        const maneuver = String(r.maneuver_type ?? r.maneuver ?? "straight").toLowerCase();
+        const lat = parseCoord(pick(r, "lat", "latitude", "lat_decimal", "latitude_decimal"));
+        const lng = parseCoord(pick(r, "lng", "lon", "long", "longitude", "lng_decimal", "longitude_decimal"));
+        const pos = Number(pick(r, "position", "pos", "waypoint_position") ?? (i + 1));
+        const maneuverRaw = pick(r, "maneuver_type", "maneuver", "manobra");
+        const maneuver = String(maneuverRaw ?? "straight").toLowerCase().trim();
 
         if (!isFinite(lat) || !isFinite(lng)) errors.push(`Linha ${i + 1}: lat/lng inválido.`);
         if (!VALID_MANEUVERS.has(maneuver)) errors.push(`Linha ${i + 1}: manobra "${maneuver}" inválida.`);
+
+        const instrRaw = pick(r, "instruction", "instrucao", "instrução", "instrucção", "descricao", "descrição");
+        const gearRaw = pick(r, "suggested_gear", "gear", "marcha");
+        const speedRaw = pick(r, "max_speed", "speed", "velocidade", "vel");
+        const obsRaw = pick(r, "observation", "observacao", "observação", "obs");
 
         return {
           position: isFinite(pos) ? pos : i + 1,
           lat,
           lng,
-          instruction: String(r.instruction ?? r.instrucao ?? r.instrução ?? ""),
+          instruction: instrRaw != null ? String(instrRaw) : "",
           maneuver_type: (VALID_MANEUVERS.has(maneuver) ? maneuver : "straight") as ManeuverType,
-          suggested_gear: r.suggested_gear != null ? String(r.suggested_gear) : null,
-          max_speed: r.max_speed != null && r.max_speed !== "" ? Number(r.max_speed) : null,
-          observation: r.observation != null ? String(r.observation) : null,
+          suggested_gear: gearRaw != null && gearRaw !== "" ? String(gearRaw) : null,
+          max_speed: speedRaw != null && speedRaw !== "" ? Number(String(speedRaw).replace(",", ".")) : null,
+          observation: obsRaw != null && obsRaw !== "" ? String(obsRaw) : null,
         };
       });
 
@@ -330,14 +350,17 @@ function ImportWaypointsButton({ lineId, onImported }: { lineId: string; onImpor
     setStep("preview");
   };
 
+  const validRows = preview.filter((r) => isFinite(r.lat) && isFinite(r.lng));
+  const hasCoordErrors = preview.some((r) => !isFinite(r.lat) || !isFinite(r.lng));
+
   const confirmImport = async () => {
     setStep("saving");
     // delete all existing waypoints for this line
     const { error: delErr } = await supabase.from("waypoints").delete().eq("line_id", lineId);
     if (delErr) { toast.error(delErr.message); setStep("preview"); return; }
 
-    // insert new waypoints in order
-    const rows = preview
+    // insert only rows with valid coordinates, in order
+    const rows = validRows
       .sort((a, b) => a.position - b.position)
       .map((r, i) => ({ ...r, position: i + 1, line_id: lineId }));
 
@@ -404,11 +427,11 @@ function ImportWaypointsButton({ lineId, onImported }: { lineId: string; onImpor
           <Button
             size="sm"
             onClick={confirmImport}
-            disabled={step === "saving" || preview.length === 0}
+            disabled={step === "saving" || validRows.length === 0}
           >
             {step === "saving"
               ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Importando…</>
-              : <><CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />Confirmar e substituir</>}
+              : <><CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />{hasCoordErrors ? `Importar ${validRows.length} ponto(s) válido(s)` : "Confirmar e substituir"}</>}
           </Button>
           <p className="text-xs text-muted-foreground">Isso substitui todos os pontos atuais da rota.</p>
         </div>
