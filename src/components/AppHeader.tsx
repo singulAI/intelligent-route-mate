@@ -18,14 +18,9 @@ export default function AppHeader() {
           <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary text-primary-foreground shadow-[var(--shadow-glow)]">
             <Bus className="h-5 w-5" strokeWidth={2} />
           </div>
-          <div className="flex flex-col leading-tight">
-            <span className="text-sm font-semibold tracking-wide">
-              RA Routes
-            </span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-              Linha 474 · gestão inteligente
-            </span>
-          </div>
+          <span className="text-sm font-semibold tracking-wide">
+            RA Routes
+          </span>
         </Link>
 
         <nav className="flex items-center gap-1 rounded-full border border-border bg-surface/60 p-1 backdrop-blur">

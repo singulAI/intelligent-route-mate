@@ -42,11 +42,12 @@ export const Route = createRootRoute({
       { name: "twitter:card", content: "summary" },
       { name: "twitter:title", content: "RA Routes — Portal de Linhas Urbanas" },
       { name: "twitter:description", content: "Portal público das linhas de transporte urbano com mapas, horários e orientações." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/23f3ff24-3f19-48ae-bbd3-9a094056b283/id-preview-6d91cca6--06dd84d6-83ef-4d2f-b208-eddc9d0e6383.lovable.app-1776740855719.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/23f3ff24-3f19-48ae-bbd3-9a094056b283/id-preview-6d91cca6--06dd84d6-83ef-4d2f-b208-eddc9d0e6383.lovable.app-1776740855719.png" },
+
     ],
     links: [
       { rel: "stylesheet", href: appCss },
+      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+      { rel: "shortcut icon", href: "/favicon.svg" },
     ],
   }),
   shellComponent: RootShell,
