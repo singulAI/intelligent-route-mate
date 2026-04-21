@@ -20,7 +20,8 @@ ENV PORT=3000
 # Copiar apenas o build + dependências necessárias em runtime
 COPY --from=builder /app/dist /app/dist
 COPY --from=builder /app/node_modules /app/node_modules
+COPY --from=builder /app/serve.mjs /app/serve.mjs
 
 EXPOSE 3000
 
-CMD ["node", "node_modules/srvx/bin/srvx.mjs", "dist/server/server.js", "--port", "3000"]
+CMD ["node", "serve.mjs"]
