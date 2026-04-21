@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useChildMatches, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -17,7 +17,7 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/gestor")({
   ssr: false,
   head: () => ({ meta: [{ title: "Painel de Gestão — RA Routes" }] }),
-  component: GestorIndex,
+  component: GestorRoot,
 });
 
 interface LineWithCount extends LineRow {
@@ -34,6 +34,12 @@ async function fetchAdminLines(): Promise<LineWithCount[]> {
   return (data as Row[] | null ?? []).map((l) => ({
     ...l, waypoint_count: l.waypoints?.[0]?.count ?? 0,
   }));
+}
+
+function GestorRoot() {
+  const childMatches = useChildMatches();
+  if (childMatches.length > 0) return <Outlet />;
+  return <GestorIndex />;
 }
 
 function GestorIndex() {

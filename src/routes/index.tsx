@@ -113,14 +113,15 @@ function LineCard({ line }: { line: LineWithWaypoints }) {
       className="group block overflow-hidden rounded-2xl border border-border bg-surface shadow-soft transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-card"
     >
       <div className="relative aspect-[5/3] overflow-hidden bg-secondary/40">
-        <MiniRouteMap points={line.waypoints} className="h-full w-full" />
-        {line.cover_image_url && (
+        {line.cover_image_url ? (
           <img
             src={line.cover_image_url}
             alt=""
-            className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-30"
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
             loading="lazy"
           />
+        ) : (
+          <MiniRouteMap points={line.waypoints} className="h-full w-full" />
         )}
       </div>
       <div className="flex items-baseline gap-2 px-4 py-3.5">
