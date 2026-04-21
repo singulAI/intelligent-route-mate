@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as MotoristaRouteImport } from './routes/motorista'
 import { Route as GestorRouteImport } from './routes/gestor'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as LinhaNumeroRouteImport } from './routes/linha.$numero'
 
 const MotoristaRoute = MotoristaRouteImport.update({
   id: '/motorista',
@@ -28,35 +29,44 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LinhaNumeroRoute = LinhaNumeroRouteImport.update({
+  id: '/linha/$numero',
+  path: '/linha/$numero',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/gestor': typeof GestorRoute
   '/motorista': typeof MotoristaRoute
+  '/linha/$numero': typeof LinhaNumeroRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/gestor': typeof GestorRoute
   '/motorista': typeof MotoristaRoute
+  '/linha/$numero': typeof LinhaNumeroRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/gestor': typeof GestorRoute
   '/motorista': typeof MotoristaRoute
+  '/linha/$numero': typeof LinhaNumeroRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/gestor' | '/motorista'
+  fullPaths: '/' | '/gestor' | '/motorista' | '/linha/$numero'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/gestor' | '/motorista'
-  id: '__root__' | '/' | '/gestor' | '/motorista'
+  to: '/' | '/gestor' | '/motorista' | '/linha/$numero'
+  id: '__root__' | '/' | '/gestor' | '/motorista' | '/linha/$numero'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   GestorRoute: typeof GestorRoute
   MotoristaRoute: typeof MotoristaRoute
+  LinhaNumeroRoute: typeof LinhaNumeroRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +92,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/linha/$numero': {
+      id: '/linha/$numero'
+      path: '/linha/$numero'
+      fullPath: '/linha/$numero'
+      preLoaderRoute: typeof LinhaNumeroRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,7 +106,17 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   GestorRoute: GestorRoute,
   MotoristaRoute: MotoristaRoute,
+  LinhaNumeroRoute: LinhaNumeroRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
