@@ -13,6 +13,7 @@ import { Route as MotoristaRouteImport } from './routes/motorista'
 import { Route as GestorRouteImport } from './routes/gestor'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LinhaNumeroRouteImport } from './routes/linha.$numero'
+import { Route as GestorLineIdRouteImport } from './routes/gestor.$lineId'
 
 const MotoristaRoute = MotoristaRouteImport.update({
   id: '/motorista',
@@ -34,37 +35,56 @@ const LinhaNumeroRoute = LinhaNumeroRouteImport.update({
   path: '/linha/$numero',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GestorLineIdRoute = GestorLineIdRouteImport.update({
+  id: '/$lineId',
+  path: '/$lineId',
+  getParentRoute: () => GestorRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/gestor': typeof GestorRoute
+  '/gestor': typeof GestorRouteWithChildren
   '/motorista': typeof MotoristaRoute
+  '/gestor/$lineId': typeof GestorLineIdRoute
   '/linha/$numero': typeof LinhaNumeroRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/gestor': typeof GestorRoute
+  '/gestor': typeof GestorRouteWithChildren
   '/motorista': typeof MotoristaRoute
+  '/gestor/$lineId': typeof GestorLineIdRoute
   '/linha/$numero': typeof LinhaNumeroRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/gestor': typeof GestorRoute
+  '/gestor': typeof GestorRouteWithChildren
   '/motorista': typeof MotoristaRoute
+  '/gestor/$lineId': typeof GestorLineIdRoute
   '/linha/$numero': typeof LinhaNumeroRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/gestor' | '/motorista' | '/linha/$numero'
+  fullPaths:
+    | '/'
+    | '/gestor'
+    | '/motorista'
+    | '/gestor/$lineId'
+    | '/linha/$numero'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/gestor' | '/motorista' | '/linha/$numero'
-  id: '__root__' | '/' | '/gestor' | '/motorista' | '/linha/$numero'
+  to: '/' | '/gestor' | '/motorista' | '/gestor/$lineId' | '/linha/$numero'
+  id:
+    | '__root__'
+    | '/'
+    | '/gestor'
+    | '/motorista'
+    | '/gestor/$lineId'
+    | '/linha/$numero'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  GestorRoute: typeof GestorRoute
+  GestorRoute: typeof GestorRouteWithChildren
   MotoristaRoute: typeof MotoristaRoute
   LinhaNumeroRoute: typeof LinhaNumeroRoute
 }
@@ -99,15 +119,42 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LinhaNumeroRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/gestor/$lineId': {
+      id: '/gestor/$lineId'
+      path: '/$lineId'
+      fullPath: '/gestor/$lineId'
+      preLoaderRoute: typeof GestorLineIdRouteImport
+      parentRoute: typeof GestorRoute
+    }
   }
 }
 
+interface GestorRouteChildren {
+  GestorLineIdRoute: typeof GestorLineIdRoute
+}
+
+const GestorRouteChildren: GestorRouteChildren = {
+  GestorLineIdRoute: GestorLineIdRoute,
+}
+
+const GestorRouteWithChildren =
+  GestorRoute._addFileChildren(GestorRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  GestorRoute: GestorRoute,
+  GestorRoute: GestorRouteWithChildren,
   MotoristaRoute: MotoristaRoute,
   LinhaNumeroRoute: LinhaNumeroRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}

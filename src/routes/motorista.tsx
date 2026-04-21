@@ -1,466 +1,240 @@
-import { useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Play,
-  Square,
-  Volume2,
-  VolumeX,
-  Gauge,
-  AlertTriangle,
-  Navigation,
-  CheckCircle2,
-  Satellite,
-  Route as RouteIcon,
+  Play, Square, Volume2, VolumeX, Gauge, AlertTriangle, Navigation,
+  CheckCircle2, Satellite, ArrowLeft, Bus,
 } from "lucide-react";
-import AppHeader from "@/components/AppHeader";
+import { supabase } from "@/integrations/supabase/client";
 import {
-  loadRoutes,
-  getActiveRouteId,
-  setActiveRouteId,
-  maneuverLabel,
-  type Route as RouteData,
-  type Waypoint,
-} from "@/lib/storage";
+  fetchAllLines, fetchWaypoints, maneuverLabel,
+  type LineRow, type WaypointRow,
+} from "@/lib/api";
 import { maneuverIcon } from "@/lib/maneuverIcons";
 import { Button } from "@/components/ui/button";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { useSpeech } from "@/hooks/useSpeech";
 
 const RouteMap = lazy(() => import("@/components/RouteMap"));
 
 export const Route = createFileRoute("/motorista")({
-  head: () => ({
-    meta: [
-      { title: "Modo Motorista — RA Routes" },
-      {
-        name: "description",
-        content:
-          "Conduza a Linha 474 com orientações de voz em tempo real, telemetria simulada e alertas de velocidade.",
-      },
-    ],
-  }),
   ssr: false,
+  head: () => ({ meta: [{ title: "Modo Motorista — RA Routes" }] }),
   component: MotoristaPage,
 });
 
 const STEP_MS = 5000;
 
 function MotoristaPage() {
-  const [routes, setRoutes] = useState<RouteData[]>([]);
+  const linesQ = useQuery({ queryKey: ["public-lines-list"], queryFn: fetchAllLines });
+  const lines = linesQ.data ?? [];
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Auto-pick first published line on load
+  useEffect(() => {
+    if (!activeId && lines.length > 0) setActiveId(lines[0].id);
+  }, [lines, activeId]);
+
+  const active = lines.find((l) => l.id === activeId) ?? null;
+
+  const wpQ = useQuery({
+    queryKey: ["motorista-wp", activeId],
+    queryFn: () => fetchWaypoints(activeId!),
+    enabled: !!activeId,
+  });
+
+  const waypoints = useMemo(() => wpQ.data ?? [], [wpQ.data]);
+
+  return (
+    <div className="min-h-screen">
+      <header className="glass sticky top-0 z-30 border-b">
+        <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4">
+          <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="h-4 w-4" /> Portal
+          </Link>
+          <div className="ml-2 rounded-md bg-accent/15 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-accent">
+            Motorista
+          </div>
+          <Select value={activeId ?? ""} onValueChange={setActiveId}>
+            <SelectTrigger className="ml-auto w-[280px]">
+              <SelectValue placeholder="Selecione uma linha" />
+            </SelectTrigger>
+            <SelectContent>
+              {lines.map((l) => (
+                <SelectItem key={l.id} value={l.id}>
+                  {String(l.number).padStart(3, "0")} — {l.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-4 py-6">
+        {!active ? (
+          <div className="grid place-items-center py-20 text-center">
+            <Bus className="h-12 w-12 text-muted-foreground" />
+            <p className="mt-3 text-sm text-muted-foreground">Selecione uma linha para iniciar a condução.</p>
+          </div>
+        ) : (
+          <Cockpit line={active} waypoints={waypoints} />
+        )}
+      </main>
+    </div>
+  );
+}
+
+function Cockpit({ line, waypoints }: { line: LineRow; waypoints: WaypointRow[] }) {
   const [running, setRunning] = useState(false);
   const [muted, setMuted] = useState(false);
-  const [stepIndex, setStepIndex] = useState(0);
-  const [busPos, setBusPos] = useState<{ lat: number; lng: number } | null>(
-    null,
-  );
-  const [speed, setSpeed] = useState(0); // km/h simulado
-  const [overspeedAlert, setOverspeedAlert] = useState(false);
-
+  const [stepIdx, setStepIdx] = useState(0);
+  const [currentSpeed, setCurrentSpeed] = useState(0);
   const { speak, stop } = useSpeech();
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const speedTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const overspeedSpokenRef = useRef(false);
+  const timerRef = useRef<number | null>(null);
+
+  const current = waypoints[stepIdx] ?? null;
+  const next = waypoints[stepIdx + 1] ?? null;
+  const finished = stepIdx >= waypoints.length - 1;
+
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); stop(); }, [stop]);
 
   useEffect(() => {
-    const r = loadRoutes();
-    setRoutes(r);
-    const a = getActiveRouteId() ?? r[0]?.id ?? null;
-    setActiveId(a);
-  }, []);
+    setStepIdx(0); setRunning(false); setCurrentSpeed(0);
+  }, [line.id]);
 
-  const active = useMemo(
-    () => routes.find((r) => r.id === activeId) ?? null,
-    [routes, activeId],
-  );
-  const wps: Waypoint[] = active?.waypoints ?? [];
-  const currentWp = wps[stepIndex] ?? null;
-  const targetSpeed = currentWp?.maxSpeed ?? 0;
+  const tick = () => {
+    setStepIdx((i) => {
+      const ni = i + 1;
+      if (ni >= waypoints.length) { setRunning(false); return i; }
+      const w = waypoints[ni];
+      setCurrentSpeed(w.max_speed ?? 0);
+      if (!muted) speak(w.instruction, { priority: true });
+      return ni;
+    });
+  };
 
-  // Telemetria derivada
-  const rpm = Math.round(800 + (speed / Math.max(1, targetSpeed)) * 2200);
-  const gear = currentWp?.suggestedGear ?? "N";
-
-  function speakWp(wp: Waypoint) {
-    if (muted) return;
-    const tip = `Marcha sugerida ${wp.suggestedGear}. Velocidade máxima ${wp.maxSpeed} quilômetros por hora. ${wp.observation}`;
-    speak(`${wp.instruction}. ${tip}`, { priority: true });
-  }
-
-  function startSimulation() {
-    if (!active || wps.length === 0) return;
+  const start = () => {
+    if (waypoints.length === 0) return;
     setRunning(true);
-    setStepIndex(0);
-    setBusPos({ lat: wps[0].lat, lng: wps[0].lng });
-    setSpeed(0);
-    overspeedSpokenRef.current = false;
-    speakWp(wps[0]);
+    if (!muted && current) speak(current.instruction, { priority: true });
+    setCurrentSpeed(current?.max_speed ?? 0);
+    timerRef.current = window.setInterval(tick, STEP_MS);
+  };
 
-    let i = 0;
-    intervalRef.current = setInterval(() => {
-      i++;
-      if (i >= wps.length) {
-        stopSimulation(true);
-        return;
-      }
-      setStepIndex(i);
-      setBusPos({ lat: wps[i].lat, lng: wps[i].lng });
-      overspeedSpokenRef.current = false;
-      speakWp(wps[i]);
-    }, STEP_MS);
-  }
-
-  function stopSimulation(completed = false) {
+  const stopRun = () => {
     setRunning(false);
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    if (speedTickRef.current) clearInterval(speedTickRef.current);
-    intervalRef.current = null;
-    speedTickRef.current = null;
-    setSpeed(0);
-    setBusPos(null);
-    setOverspeedAlert(false);
+    if (timerRef.current) clearInterval(timerRef.current);
     stop();
-    if (completed && !muted) {
-      speak("Percurso concluído. Bom trabalho.", { priority: true });
-    }
-  }
+  };
 
-  // Loop de aproximação de velocidade ao alvo, com pequena variação
-  useEffect(() => {
-    if (!running) return;
-    speedTickRef.current = setInterval(() => {
-      setSpeed((s) => {
-        const noise = (Math.random() - 0.45) * 6;
-        const target = targetSpeed + noise;
-        const next = s + (target - s) * 0.25;
-        return Math.max(0, Math.round(next));
-      });
-    }, 400);
-    return () => {
-      if (speedTickRef.current) clearInterval(speedTickRef.current);
-    };
-  }, [running, targetSpeed]);
+  const reset = () => { stopRun(); setStepIdx(0); setCurrentSpeed(0); };
 
-  // Alerta de excesso
-  useEffect(() => {
-    if (!running || !currentWp) return;
-    const over = speed > currentWp.maxSpeed + 3;
-    setOverspeedAlert(over);
-    if (over && !overspeedSpokenRef.current && !muted) {
-      overspeedSpokenRef.current = true;
-      speak("Velocidade acima do permitido, reduza", { priority: true });
-    }
-    if (!over) overspeedSpokenRef.current = false;
-  }, [speed, running, currentWp, muted, speak]);
-
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (speedTickRef.current) clearInterval(speedTickRef.current);
-      stop();
-    };
-  }, [stop]);
-
-  if (!active) {
-    return (
-      <div className="flex min-h-screen flex-col">
-        <AppHeader />
-        <div className="grid flex-1 place-items-center text-muted-foreground">
-          <div className="text-center">
-            <p>Nenhuma rota disponível.</p>
-            <Link to="/gestor" className="mt-4 inline-block text-primary underline">
-              Ir ao Gestor
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const speedPct = current?.max_speed ? Math.min(100, (currentSpeed / current.max_speed) * 100) : 0;
+  const Icon = current ? maneuverIcon[current.maneuver_type] : Navigation;
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <AppHeader />
-      <div className="grid flex-1 gap-0 lg:grid-cols-[1fr_420px]">
-        {/* Map */}
-        <section className="relative h-[55vh] lg:h-[calc(100vh-4rem)]">
-          <Suspense
-            fallback={
-              <div className="grid h-full place-items-center text-muted-foreground">
-                Carregando mapa…
-              </div>
-            }
-          >
-            <RouteMap waypoints={wps} busPosition={busPos} />
-          </Suspense>
+    <div className="grid gap-4 lg:grid-cols-[1fr_400px]">
+      <div className="h-[70vh] overflow-hidden rounded-2xl border border-border">
+        <Suspense fallback={<div className="grid h-full place-items-center text-xs text-muted-foreground">Carregando mapa…</div>}>
+          <RouteMap
+            waypoints={waypoints.map((w) => ({
+              id: w.id, lat: w.lat, lng: w.lng, instruction: w.instruction,
+              maneuver: w.maneuver_type, suggestedGear: w.suggested_gear ?? "",
+              maxSpeed: w.max_speed ?? 0, observation: w.observation ?? "",
+            }))}
+            busPosition={current ? { lat: current.lat, lng: current.lng } : null}
+            selectedWaypointId={current?.id ?? null}
+          />
+        </Suspense>
+      </div>
 
-          {/* Route picker overlay */}
-          <div className="pointer-events-auto absolute left-4 top-4 z-[400] flex items-center gap-2 rounded-full border border-border bg-surface/80 px-3 py-1.5 backdrop-blur">
-            <RouteIcon className="h-4 w-4 text-primary" strokeWidth={1.75} />
-            <select
-              value={active.id}
-              onChange={(e) => {
-                setActiveId(e.target.value);
-                setActiveRouteId(e.target.value);
-                stopSimulation();
-              }}
-              className="bg-transparent text-sm font-medium outline-none"
-            >
-              {routes.map((r) => (
-                <option key={r.id} value={r.id} className="bg-surface text-foreground">
-                  {r.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Overspeed flash */}
-          <AnimatePresence>
-            {overspeedAlert && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="pointer-events-none absolute inset-0 z-[300] ring-4 ring-inset ring-destructive/60"
-              />
-            )}
-          </AnimatePresence>
-        </section>
-
-        {/* Cockpit panel */}
-        <aside className="border-l border-border bg-sidebar/60 backdrop-blur lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)] lg:overflow-y-auto">
-          <div className="space-y-5 p-5">
-            {/* Telemetria */}
-            <div className="rounded-2xl border border-border bg-gradient-to-br from-surface to-surface-2 p-5 shadow-[var(--shadow-elevated)]">
-              <div className="mb-3 flex items-center justify-between">
-                <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
-                  Telemetria
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className={`h-2 w-2 rounded-full ${running ? "bg-success animate-pulse" : "bg-muted-foreground/40"}`}
-                  />
-                  <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                    {running ? "ativo" : "ocioso"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-end justify-between">
-                <div>
-                  <div
-                    className={`font-mono text-6xl font-bold leading-none tabular-nums transition-colors ${overspeedAlert ? "text-destructive" : "text-foreground"}`}
-                  >
-                    {speed}
-                  </div>
-                  <div className="mt-1 font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                    km/h
-                  </div>
-                </div>
-                <div className="space-y-2 text-right">
-                  <Stat label="Marcha" value={gear} />
-                  <Stat label="RPM" value={running ? rpm.toString() : "—"} />
-                  <Stat
-                    label="Limite"
-                    value={`${targetSpeed} km/h`}
-                  />
-                </div>
-              </div>
-
-              {/* Speed bar */}
-              <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-secondary">
-                <motion.div
-                  className={`h-full ${overspeedAlert ? "bg-destructive" : "bg-primary"}`}
-                  animate={{
-                    width: `${Math.min(100, (speed / Math.max(targetSpeed * 1.3, 1)) * 100)}%`,
-                  }}
-                  transition={{ duration: 0.3 }}
-                />
-              </div>
-            </div>
-
-            {/* Alerta ativo */}
-            <AnimatePresence>
-              {overspeedAlert && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="flex items-start gap-3 rounded-xl border border-destructive/60 bg-destructive/15 p-4"
-                >
-                  <AlertTriangle
-                    className="h-5 w-5 shrink-0 text-destructive"
-                    strokeWidth={2}
-                  />
-                  <div>
-                    <p className="text-sm font-semibold text-destructive">
-                      Velocidade acima do permitido
-                    </p>
-                    <p className="mt-0.5 text-xs text-destructive/80">
-                      Reduza para no máximo {targetSpeed} km/h.
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Etapa atual */}
-            {currentWp && (
-              <CurrentStep wp={currentWp} index={stepIndex} total={wps.length} />
-            )}
-
-            {/* Controls */}
-            <div className="flex gap-2">
-              {!running ? (
-                <Button onClick={startSimulation} className="flex-1 gap-2" size="lg">
-                  <Play className="h-4 w-4" strokeWidth={2} /> Simular
-                </Button>
-              ) : (
-                <Button
-                  onClick={() => stopSimulation()}
-                  variant="outline"
-                  className="flex-1 gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  size="lg"
-                >
-                  <Square className="h-4 w-4" strokeWidth={2} /> Parar
-                </Button>
-              )}
-              <Button
-                onClick={() => setMuted((m) => !m)}
-                variant="outline"
-                size="lg"
-                className="gap-2"
-                title={muted ? "Ativar voz" : "Silenciar voz"}
-              >
-                {muted ? (
-                  <VolumeX className="h-4 w-4" strokeWidth={2} />
-                ) : (
-                  <Volume2 className="h-4 w-4" strokeWidth={2} />
-                )}
+      <div className="space-y-3">
+        {/* Control */}
+        <div className="rounded-2xl border border-border bg-surface p-4">
+          <div className="flex gap-2">
+            {!running ? (
+              <Button onClick={start} disabled={waypoints.length === 0 || finished} className="flex-1">
+                <Play className="mr-1.5 h-4 w-4" /> Iniciar
               </Button>
-            </div>
-
-            {/* Step list */}
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Etapas do percurso
-                </h3>
-                <span className="font-mono text-[10px] text-muted-foreground">
-                  {stepIndex + 1}/{wps.length}
-                </span>
-              </div>
-              <ol className="space-y-1.5">
-                {wps.map((w, i) => {
-                  const Icon = maneuverIcon[w.maneuver];
-                  const passed = i < stepIndex && running;
-                  const isCurrent = i === stepIndex && running;
-                  return (
-                    <li key={w.id}>
-                      <div
-                        className={`flex items-start gap-2.5 rounded-lg border p-2.5 text-left transition-all ${
-                          isCurrent
-                            ? "border-accent/60 bg-accent/10"
-                            : passed
-                              ? "border-border bg-surface/50 opacity-60"
-                              : "border-border bg-surface"
-                        }`}
-                      >
-                        <div
-                          className={`grid h-7 w-7 shrink-0 place-items-center rounded-md ${
-                            isCurrent
-                              ? "bg-accent text-accent-foreground"
-                              : passed
-                                ? "bg-success/20 text-success"
-                                : "bg-primary/15 text-primary"
-                          }`}
-                        >
-                          {passed ? (
-                            <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />
-                          ) : (
-                            <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                            #{i + 1} · {maneuverLabel(w.maneuver)} · {w.suggestedGear} ·{" "}
-                            {w.maxSpeed} km/h
-                          </div>
-                          <p className="mt-0.5 line-clamp-2 text-xs text-foreground/90">
-                            {w.instruction}
-                          </p>
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
-            </div>
-
-            <div className="flex items-start gap-2 rounded-lg border border-border bg-surface p-3 text-[11px] text-muted-foreground">
-              <Satellite className="mt-0.5 h-4 w-4 shrink-0 text-primary" strokeWidth={1.5} />
-              <p>
-                <span className="font-medium text-foreground">Próxima evolução:</span>{" "}
-                substituir simulação pela posição real do GPS do dispositivo
-                (<code className="font-mono">watchPosition</code>).
-              </p>
-            </div>
+            ) : (
+              <Button onClick={stopRun} variant="destructive" className="flex-1">
+                <Square className="mr-1.5 h-4 w-4" /> Parar
+              </Button>
+            )}
+            <Button onClick={reset} variant="outline">Reset</Button>
+            <Button onClick={() => setMuted((m) => !m)} variant="outline" size="icon">
+              {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+            </Button>
           </div>
-        </aside>
-      </div>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="text-right">
-      <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-        {label}
-      </div>
-      <div className="font-mono text-lg font-semibold tabular-nums">{value}</div>
-    </div>
-  );
-}
-
-function CurrentStep({
-  wp,
-  index,
-  total,
-}: {
-  wp: Waypoint;
-  index: number;
-  total: number;
-}) {
-  const Icon = maneuverIcon[wp.maneuver];
-  return (
-    <motion.div
-      key={wp.id}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="rounded-2xl border border-primary/40 bg-primary/10 p-4"
-    >
-      <div className="flex items-start gap-3">
-        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-[var(--shadow-glow)]">
-          <Icon className="h-6 w-6" strokeWidth={1.75} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <Navigation className="h-3 w-3 text-primary" strokeWidth={2} />
-            <span className="font-mono text-[10px] uppercase tracking-widest text-primary">
-              etapa {index + 1} de {total} · {maneuverLabel(wp.maneuver)}
-            </span>
-          </div>
-          <p className="mt-1.5 text-sm font-medium leading-snug">
-            {wp.instruction}
+          <p className="mt-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            {String(line.number).padStart(3, "0")} · {line.name}
           </p>
-          {wp.observation && (
-            <div className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
-              <Gauge className="mt-0.5 h-3 w-3 shrink-0" strokeWidth={1.75} />
-              <span>{wp.observation}</span>
-            </div>
+        </div>
+
+        {/* Current step */}
+        <AnimatePresence mode="wait">
+          {current && (
+            <motion.div
+              key={current.id}
+              initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }}
+              className="rounded-2xl border border-primary/40 bg-primary/10 p-4"
+            >
+              <div className="flex items-center gap-3">
+                <div className="grid h-12 w-12 place-items-center rounded-xl bg-primary text-primary-foreground">
+                  <Icon className="h-6 w-6" strokeWidth={2} />
+                </div>
+                <div>
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                    Etapa {stepIdx + 1} de {waypoints.length} · {maneuverLabel(current.maneuver_type)}
+                  </p>
+                  <p className="text-sm font-semibold leading-tight">{current.instruction}</p>
+                </div>
+              </div>
+              {current.observation && (
+                <p className="mt-3 flex items-start gap-1.5 text-xs text-warning">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5" />{current.observation}
+                </p>
+              )}
+            </motion.div>
           )}
+        </AnimatePresence>
+
+        {/* Telemetry */}
+        <div className="rounded-2xl border border-border bg-surface p-4">
+          <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Telemetria</p>
+          <div className="mt-3 flex items-baseline gap-2">
+            <Gauge className="h-5 w-5 text-accent" />
+            <span className="font-mono text-3xl font-bold">{currentSpeed}</span>
+            <span className="text-xs text-muted-foreground">km/h · máx {current?.max_speed ?? "—"}</span>
+          </div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+            <div className="h-full bg-gradient-to-r from-success via-warning to-destructive transition-all" style={{ width: `${speedPct}%` }} />
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+            <div className="rounded-lg bg-surface-2 p-2">
+              <p className="font-mono text-[10px] uppercase text-muted-foreground">Marcha</p>
+              <p className="font-semibold">{current?.suggested_gear ?? "—"}</p>
+            </div>
+            <div className="rounded-lg bg-surface-2 p-2">
+              <p className="font-mono text-[10px] uppercase text-muted-foreground">Próximo</p>
+              <p className="truncate font-semibold">{next ? maneuverLabel(next.maneuver_type) : "Fim"}</p>
+            </div>
+          </div>
+        </div>
+
+        {finished && (
+          <div className="flex items-center gap-2 rounded-xl border border-success/40 bg-success/10 p-3 text-sm text-success">
+            <CheckCircle2 className="h-4 w-4" /> Trajeto concluído.
+          </div>
+        )}
+
+        <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+          <Satellite className="h-3 w-3" /> GPS simulado
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
